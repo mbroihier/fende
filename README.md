@@ -15,5 +15,5 @@ From a bash shell:
 2) cd fende
 3) sudo pip3 install pillow
 4) typing
-   . ./fende
-   . will display usage
+   - ./fende
+   - will display usage
