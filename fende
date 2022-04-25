@@ -1,0 +1,310 @@
+#!/usr/bin/python3
+'''
+fende - file encryptor and decryptor using RSA and AEC
+'''
+import getopt
+import sys
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Cipher import AES
+from Crypto.Hash import SHA256
+from Crypto import Random
+
+
+CHUNKSIZE = 64*126000  # determines size of image allowed
+KEY_SIZE = 1024
+SIZE = 16
+
+class Utilities():
+    '''
+    Utilities - to handle files to encrypt/decript
+    '''
+    def __init__(self):
+        '''
+        Utilities constructor
+        '''
+        self.uniqueRequests = {}
+        self.uniquePaths = {}
+        self.encryptParameters = ["--publicKeyPath", "--password", "--fileToEncryptPath",
+                                  "--encryptedFilePath"]
+        self.decryptParameters = ["--privateKeyPath", "--fileToDecryptPath", "--decryptedFilePath"]
+        self.generateKeysParameters = ["--generateKeys", "--publicKeyPath", "--privateKeyPath"]
+        self.helpParameters = ["-h", "--help"]
+        self.parameterNames = ["-h", "--help", "--publicKeyPath", "--privateKeyPath", "--password",
+                               "--passwordFilePath", "--fileToEncryptPath", "--fileToDecryptPath",
+                               "--encryptedFilePath", "--decryptedFilePath", "--generateKeys"]
+        self.validatedParameters = {}
+        self.command = None
+
+    @staticmethod
+    def getKey(password):
+        '''
+        getKey - get key / hash of password
+        '''
+        hasher = SHA256.new(password.encode('utf-8'))
+        return hasher.digest()
+
+    def inputParameter(self, parameter, value):
+        '''
+        inputParameter - record input parameter and check that it is unique
+        '''
+        if value != "":
+            if value in self.uniquePaths:
+                print("All file path names must be unique")
+                sys.exit(1)
+            else:
+                self.uniquePaths[value] = value
+        if parameter in self.uniqueRequests:
+            print("This option has already been defined:", parameter)
+            sys.exit(1)
+        else:
+            self.uniqueRequests[parameter] = parameter
+        return value
+
+    def validateParameters(self, parameters):
+        '''
+        validateParameter - check the parameters for existence and consistency
+        '''
+        self.command = None
+        for request, value in parameters:
+            if request in self.parameterNames:
+                self.validatedParameters[request] = self.inputParameter(request, value)
+            else:
+                print(f"This option is not a valid option:{request}")
+                usage()
+                sys.exit(1)
+        notMissing = True
+        for parameter in self.helpParameters:
+            if not parameter in self.uniqueRequests:
+                notMissing = False
+        if notMissing:
+            self.command = "executeHelp"
+        else:
+            notMissing = True
+            for parameter in self.generateKeysParameters:
+                if not parameter in self.uniqueRequests:
+                    notMissing = False
+            if notMissing:
+                self.command = "executeGenerateKeys"
+            else:
+                notMissing = True
+                for parameter in self.encryptParameters:
+                    if not parameter in self.uniqueRequests:
+                        notMissing = False
+                if notMissing:
+                    self.command = "executeEncryptMessage"
+                else:
+                    notMissing = True
+                    for parameter in self.decryptParameters:
+                        if not parameter in self.uniqueRequests:
+                            notMissing = False
+                    if notMissing:
+                        self.command =  "executeDecryptMessage"
+                    else:
+                        print("Invalid option combinations/ambiguous request")
+                        usage()
+                        print("Validated parameters are:")
+                        for param, value in self.validatedParameters.items():
+                            print(f"{param} : {value}")
+                        sys.exit(1)
+        if self.command is None:
+            print("Missing required parameters")
+            usage()
+            sys.exit(1)
+        if "--password" not in self.validatedParameters:
+            self.validatedParameters["--password"] = ""
+        if "--passwordFilePath" not in self.validatedParameters:
+            self.validatedParameters["--passwordFilePath"] = ""
+
+    def executeCommand(self):
+        '''
+        executeCommand - execute the command that has the supplied parameters
+        '''
+        if not self.command is None:
+            if self.command == "executeHelp":
+                usage()
+                sys.exit()
+            elif self.command == "executeGenerateKeys":
+                publicKeyPath = self.validatedParameters["--publicKeyPath"]
+                privateKeyPath = self.validatedParameters["--privateKeyPath"]
+                self.generateKeys(publicKeyPath, privateKeyPath)
+            elif self.command == "executeEncryptMessage":
+                publicKeyPath = self.validatedParameters["--publicKeyPath"]
+                password = self.validatedParameters["--password"]
+                passwordFilePath = self.validatedParameters["--passwordFilePath"]
+                fileToEncryptPath = self.validatedParameters["--fileToEncryptPath"]
+                encryptedFilePath = self.validatedParameters["--encryptedFilePath"]
+                self.encryptFile(publicKeyPath, password, passwordFilePath, fileToEncryptPath,
+                                 encryptedFilePath)
+            elif self.command == "executeDecryptMessage":
+                privateKeyPath = self.validatedParameters["--privateKeyPath"]
+                passwordFilePath = self.validatedParameters["--passwordFilePath"]
+                fileToDecryptPath = self.validatedParameters["--fileToDecryptPath"]
+                decryptedFilePath = self.validatedParameters["--decryptedFilePath"]
+                self.decryptFile(privateKeyPath, passwordFilePath, fileToDecryptPath,
+                                 decryptedFilePath)
+            else:
+                print(f"Invalid execution command: {self.command}")
+                sys.exit(1)
+
+    @staticmethod
+    def generateKeys(publicKeyPath, privateKeyPath):
+        '''
+        generateKeys - generate a pair of RSA keys
+        '''
+        keyPair = RSA.generate(KEY_SIZE)
+
+        pubKey = keyPair.publickey()
+
+        with open(publicKeyPath, "wb") as fileObj: #save public key
+            fileObj.write(pubKey.exportKey('OpenSSH'))
+
+        with open(privateKeyPath, "wb") as fileObj: #save private key
+            fileObj.write(keyPair.exportKey('PEM'))
+        print("done")
+
+    def encryptFile(self, publicKeyPath, password, passwordFilePath, fileToEncryptPath,
+                    encryptedFilePath):
+        '''
+        encryptFile - encrypt a file using AEC
+        '''
+        try:
+            with open(publicKeyPath, 'rb') as fileObj:
+                buf = fileObj.read()
+                encryptor = PKCS1_OAEP.new(RSA.importKey(buf))
+        except :
+            print('Bad Public Key file path')
+            return
+        if password == '':
+            print('No password/phrase')
+            return
+        encrypted = encryptor.encrypt(str.encode(password))
+        try:
+            if passwordFilePath == "":
+                with open(encryptedFilePath, 'wb') as fileObj:
+                    fileObj.write(encrypted)
+            else:
+                with open(passwordFilePath, 'wb') as fileObj:
+                    fileObj.write(encrypted)
+        except:
+            print('Bad Password File Path')
+            return
+
+        # Encrypt message using AEC
+
+        try:
+            with open(fileToEncryptPath,'rb') as fileObj:
+                chunk=fileObj.read()
+        except:
+            print('Bad Message File Path')
+            return
+        if len(chunk) % SIZE:  # add on bytes if not a multiple of size
+            chunk += b' ' * (SIZE - (len(chunk) % SIZE))
+        filesize = str(len(chunk)).zfill(SIZE)
+        IV = Random.new().read(SIZE)
+
+        encryptor = AES.new(self.getKey(password), AES.MODE_CBC, IV)
+        try:
+            with open(encryptedFilePath, 'ab') as outfile:
+                outfile.write(filesize.encode('utf-8'))
+                outfile.write(IV)
+                outfile.write(encryptor.encrypt(chunk))
+                print('Encryption Done')
+        except:
+            print('Bad Message File Path')
+
+
+    def decryptFile(self, privateKeyPath, passwordFilePath, fileToDecryptPath, decryptedFilePath):
+        '''
+        decryptFile - decrypt a file using AEC
+        '''
+
+        # decrypt password using RSA
+
+        try:
+            if passwordFilePath != '':
+                with open(passwordFilePath, 'rb') as fileObj:
+                    encrypted = fileObj.read()
+            else:
+                with open(fileToDecryptPath, 'rb') as fileObj:
+                    encrypted = fileObj.read()[:128]
+        except:
+            print("Password information could not be read")
+            return
+
+        try:
+            with open(privateKeyPath, 'rb') as fileObj:
+                decryptor = PKCS1_OAEP.new(RSA.importKey(fileObj.read()))  #(keyPair)
+        except:
+            print("Private key could not be read or processed")
+            return
+        try:
+            decrypted = decryptor.decrypt(encrypted)
+        except:
+            print("Incorrect decryption")
+            return
+
+        password= decrypted.decode("utf-8")
+
+        # decrypt message using AEC
+
+        try:
+            with open(fileToDecryptPath, 'rb') as infile:
+                if passwordFilePath == '':
+                    infile.read(128)  # read past password information
+                infile.read(SIZE) # read past file size
+                IV = infile.read(SIZE)
+                decryptor = AES.new(self.getKey(password), AES.MODE_CBC, IV)
+                data = infile.read(CHUNKSIZE)
+        except:
+            print("Bad Encrypted message file or bad path")
+            return
+
+        decoded = decryptor.decrypt(data)
+        print("File Decrypted")
+        try:
+            with open(decryptedFilePath, "wb") as fileObj:
+                fileObj.write(decoded)
+        except:
+            print("Bad Decrypted file path")
+
+
+def usage():
+    '''
+    usage - print usage of this program
+    '''
+    print("python3 aecRSApx4_0.py -h | --help displays this message")
+    print("python3 aecRSApx4_0.py --generateKeys --publicKeyPath=<path> --privateKeyPath=<path>")
+    print("python3 aecRSApx4_0.py --publicKeyPath=<path> --fileToEncrypt=<path>")
+    print("                        --password=<password>--encryptedFilePath=<path>)")
+    print("                        [--passwordFilePath=<path>])")
+    print("python3 aecRSApx4_0.py --privateKeyPath=<path> --fileToDecrypt=<path>")
+    print("                       --decryptedFilePath=<path> [--passwordFilePath=<path>])")
+
+def main():
+    '''
+    main - main program
+    '''
+
+    try:
+        options, dontCare  = getopt.getopt(sys.argv[1:], "h", ["help", "publicKeyPath=",
+                                                               "privateKeyPath=",
+                                                               "password=", "passwordFilePath=",
+                                                               "fileToEncryptPath=",
+                                                               "encryptedFilePath=",
+                                                               "fileToDecryptPath=",
+                                                               "decryptedFilePath=",
+                                                               "generateKeys"])
+        if len(dontCare):
+            print("Excess command line parameters")
+            sys.exit(1)
+    except getopt.GetoptError as err:
+        print(err)
+        usage()
+        sys.exit(1)
+    utilities = Utilities()
+    utilities.validateParameters(options)
+    utilities.executeCommand()
+#---------------------------------------
+if __name__ == "__main__":
+    main()
