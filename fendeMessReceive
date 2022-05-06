@@ -1,0 +1,117 @@
+#!/usr/bin/python3
+'''
+fendeMessReceive - Recieve a fende encrypted message from an IMAP server
+'''
+import base64
+import getopt
+import re
+import subprocess
+import sys
+from io import BytesIO
+import pycurl
+import configure
+
+def usage():
+    '''
+    usage - prints usage of this command
+    '''
+    print("fendeMessReceive -h | --help   displays this message")
+    print("fendeMessReceive <messages to decode> [<maximum messages to read - default is 10>]")
+
+def main():
+    '''
+    fendeMessReceive - receive encrypted message from an IMAP server and decrypt them
+    '''
+    numberOfMessagesToProcess = 1
+    numberOfMessagesProcessed = 0
+    maximumNumberOfMessagesToRead = 10
+    numberOfMessagesRead = 0
+    try:
+        options, defaultParameters = getopt.getopt(sys.argv[1:], "h", ["help"])
+        if options and (options[0][0] == "-h" or options[0][0] == "--help"):
+            usage()
+            sys.exit(1)
+        if len(defaultParameters):
+            if len(defaultParameters) == 1:
+                numberOfMessagesToProcess = int(defaultParameters[0])
+            else:
+                if len(defaultParameters) == 2:
+                    numberOfMessagesToProcess = int(defaultParameters[0])
+                    maximumNumberOfMessagesToRead = int(defaultParameters[1])
+                else:
+                    print("Invalid parameters")
+                    usage()
+                    sys.exit(1)
+    except getopt.GetoptError as err:
+        print(err)
+        usage()
+        sys.exit(1)
+    crl = pycurl.Curl()
+    crl.setopt(crl.URL, f'{configure.IMAP_URL}/INBOX')
+    crl.setopt(crl.USERPWD, configure.MAIL_CRED)
+    crl.setopt(crl.CUSTOMREQUEST, 'UID SEARCH ALL')
+    bObject = BytesIO()
+    crl.setopt(crl.WRITEDATA, bObject)
+    crl.perform()
+    body = bObject.getvalue().decode('utf8')
+    bObject.close()
+    match = re.search(r'SEARCH(( \d+)+)', body, re.MULTILINE)
+    if match:
+        aUIDList = match.group(1).split(' ')
+        aUIDList.reverse()
+    else:
+        print("Could not get a list of UIDs:", body)
+        sys.exit()
+    emailToGet = aUIDList[0]
+    numberOfValidMessages = len(aUIDList) - 1
+    crl.close()
+    while numberOfMessagesProcessed < numberOfMessagesToProcess\
+          and numberOfMessagesRead < maximumNumberOfMessagesToRead\
+          and numberOfMessagesRead < numberOfValidMessages:
+        print(f'Attempting to process message ID {emailToGet}, messages read so far: {numberOfMessagesRead}')
+        bObject = BytesIO()
+        crl = pycurl.Curl()
+        crl.setopt(crl.URL,f'{configure.IMAP_URL}/INBOX;UID={emailToGet}')
+        crl.setopt(crl.USERPWD, configure.MAIL_CRED)
+        crl.setopt(crl.WRITEDATA, bObject)
+        try:
+            crl.perform()
+        except Exception as err:
+            print("Shouldn't get this error:", err)
+            sys.exit(-1)
+            emailToGet -= 1
+            crl.close()
+            if err.args[0] == 78:
+                print("Message ID not found")
+            else:
+                print("Unexpected exception", err)
+            continue
+        numberOfMessagesRead += 1
+        body = bObject.getvalue()
+        bObject.close()
+        privateKey = configure.PRIVATE_KEY_PATH
+        subject = re.compile(b'Subject: fende message ([^\r]+)\r\n\r\n')
+        match = subject.search(body)
+        emailToGet = aUIDList[numberOfMessagesRead]
+        if match:
+            fileName = match.group(1)
+            numberOfMessagesProcessed += 1
+            binaryMessage = base64.decodebytes(body[match.end(0):-2])
+            with open("_tempEncryptedFile.bin", "wb") as fileObject:
+                fileObject.write(binaryMessage)
+            privateKeyParameter = f'--privateKeyPath={privateKey}'
+            command = '/home/pi/fende/fende'
+            try:
+                result = subprocess.check_output([command, privateKeyParameter,
+                                                  '--fileToDecryptPath=_tempEncryptedFile.bin',
+                                                  '--decryptedFilePath=' +
+                                                  configure.FILES_READ_DIRECTORY
+                                                  + fileName.decode('utf-8')])
+                print("Decryption attempted...", result.decode('utf-8'))
+            except Exception as err:
+                print(err)
+                sys.exit(-1)
+        crl.close()
+
+if __name__ == "__main__":
+    main()

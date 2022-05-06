@@ -1,0 +1,88 @@
+#!/usr/bin/python3
+'''
+fendeMessSend - send a fende encrypted message to an IMAP server
+'''
+import base64
+import getopt
+import os
+import secrets
+import subprocess
+import sys
+from io import BytesIO
+import pycurl
+import configure
+def validateParameters(parameters):
+    '''
+    validateParameters - make sure all necessary parameters exist and are sane
+    '''
+    validatedParameters = {}
+    for parameter, value in parameters:
+        if "-h" == parameter or "--help" == parameter:
+            usage()
+            sys.exit(1)
+        if "--publicKeyPath" == parameter:
+            validatedParameters["publicKeyPath"] = value
+        if "--fileToSend" == parameter:
+            validatedParameters["fileToSend"] = value
+        if "--emailAddress" == parameter:
+            validatedParameters["emailAddress"] = value
+    if not ("publicKeyPath" in validatedParameters and "fileToSend" in validatedParameters and
+            "emailAddress" in validatedParameters):
+        print("Missing parameters", validatedParameters)
+        usage()
+        sys.exit(1)
+    return validatedParameters
+
+def usage():
+    '''
+    usage - prints usage of this command
+    '''
+    print('fendeMessSend -h | --help   displays this message')
+    print('fendeMessSend --publicKeyPath=<path> --fileToSend=<path> --emailAddress=<email address>')
+    print('                            sends encrypted file to the specified email address')
+
+def main():
+    '''
+    fendemessSend - Encrpyt and send a message
+    '''
+    try:
+        options, dontCare = getopt.getopt(sys.argv[1:], "h", ["help", "publicKeyPath=",
+                                                              "fileToSend=",
+                                                              "emailAddress="])
+        if len(dontCare):
+            print("Excess command line parameters")
+            sys.exit(1)
+    except getopt.GetoptError as err:
+        print(err)
+        usage()
+        sys.exit(1)
+    validatedParameters = validateParameters(options)
+    crl = pycurl.Curl()
+    crl.setopt(crl.URL, configure.URL)
+    crl.setopt(crl.USERPWD, configure.MAIL_CRED)
+    crl.setopt(crl.MAIL_FROM, configure.FROM)
+    crl.setopt(crl.MAIL_RCPT, [validatedParameters["emailAddress"]])
+    try:
+        pWord = secrets.token_hex(16)
+        result = subprocess.check_output([configure.FENDE,
+                                          f'--publicKeyPath={validatedParameters["publicKeyPath"]}',
+                                          f'--fileToEncryptPath={validatedParameters["fileToSend"]}',
+                                          '--encryptedFilePath=_tempFileToSend.bin',
+                                          f'--password={pWord}'])
+        print("Message being encrypted....", result.decode('utf-8'))
+    except Exception as err:
+        print(err)
+        sys.exit(-1)
+    with open('_tempFileToSend.bin', 'rb') as fileObject:
+        encryptedMessage = fileObject.read()
+    base64EncryptedMessage = base64.b64encode(encryptedMessage)
+    (dontCare, tail) = os.path.split(validatedParameters["fileToSend"])
+    ioObject = BytesIO(b'Subject: fende message ' + bytes(tail + '\n', 'utf-8') + base64EncryptedMessage)
+    crl.setopt(crl.READDATA, ioObject)
+    crl.setopt(crl.UPLOAD, 1)
+    crl.perform()
+    crl.close()
+    os.unlink('_tempFileToSend.bin')
+
+if __name__ == "__main__":
+    main()
