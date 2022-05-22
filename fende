@@ -184,6 +184,8 @@ class Utilities():
                 with open(encryptedFilePath, 'wb') as fileObj:
                     fileObj.write(encrypted)
             else:
+                with open(encryptedFilePath, 'wb') as fileObj: #empty file
+                    pass
                 with open(passwordFilePath, 'wb') as fileObj:
                     fileObj.write(encrypted)
         except:
@@ -273,13 +275,13 @@ def usage():
     '''
     usage - print usage of this program
     '''
-    print("python3 aecRSApx4_0.py -h | --help displays this message")
-    print("python3 aecRSApx4_0.py --generateKeys --publicKeyPath=<path> --privateKeyPath=<path>")
-    print("python3 aecRSApx4_0.py --publicKeyPath=<path> --fileToEncrypt=<path>")
-    print("                        --password=<password>--encryptedFilePath=<path>)")
-    print("                        [--passwordFilePath=<path>])")
-    print("python3 aecRSApx4_0.py --privateKeyPath=<path> --fileToDecrypt=<path>")
-    print("                       --decryptedFilePath=<path> [--passwordFilePath=<path>])")
+    print("fende -h | --help displays this message")
+    print("fende --generateKeys --publicKeyPath=<path> --privateKeyPath=<path>")
+    print("fende --publicKeyPath=<path> --fileToEncrypt=<path>")
+    print("      --password=<password>--encryptedFilePath=<path>)")
+    print("      [--passwordFilePath=<path>])")
+    print("fende --privateKeyPath=<path> --fileToDecrypt=<path>")
+    print("      --decryptedFilePath=<path> [--passwordFilePath=<path>])")
 
 def main():
     '''
