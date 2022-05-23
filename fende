@@ -256,7 +256,6 @@ class Utilities():
                 if passwordFilePath == '':
                     infile.read(128)  # read past password information
                 realFileSize = int(infile.read(SIZE).decode('utf-8')) # get file size
-                print(realFileSize)
                 IV = infile.read(SIZE)
                 decryptor = AES.new(self.getKey(password), AES.MODE_CBC, IV)
                 data = infile.read(CHUNKSIZE)
