@@ -200,9 +200,9 @@ class Utilities():
         except:
             print('Bad Message File Path')
             return
+        filesize = str(len(chunk)).zfill(SIZE)
         if len(chunk) % SIZE:  # add on bytes if not a multiple of size
             chunk += b' ' * (SIZE - (len(chunk) % SIZE))
-        filesize = str(len(chunk)).zfill(SIZE)
         IV = Random.new().read(SIZE)
 
         encryptor = AES.new(self.getKey(password), AES.MODE_CBC, IV)
@@ -250,11 +250,13 @@ class Utilities():
 
         # decrypt message using AEC
 
+        realFileSize = 0
         try:
             with open(fileToDecryptPath, 'rb') as infile:
                 if passwordFilePath == '':
                     infile.read(128)  # read past password information
-                infile.read(SIZE) # read past file size
+                realFileSize = int(infile.read(SIZE).decode('utf-8')) # get file size
+                print(realFileSize)
                 IV = infile.read(SIZE)
                 decryptor = AES.new(self.getKey(password), AES.MODE_CBC, IV)
                 data = infile.read(CHUNKSIZE)
@@ -266,7 +268,7 @@ class Utilities():
         print("File Decrypted")
         try:
             with open(decryptedFilePath, "wb") as fileObj:
-                fileObj.write(decoded)
+                fileObj.write(decoded[0:realFileSize])
         except:
             print("Bad Decrypted file path")
 
