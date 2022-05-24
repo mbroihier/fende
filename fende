@@ -11,7 +11,7 @@ from Crypto.Hash import SHA256
 from Crypto import Random
 
 
-CHUNKSIZE = 64*126000  # determines size of image allowed
+CHUNKSIZE = 64*1024000  # maximum file size processed
 KEY_SIZE = 1024
 SIZE = 16
 
@@ -197,8 +197,11 @@ class Utilities():
         try:
             with open(fileToEncryptPath,'rb') as fileObj:
                 chunk=fileObj.read()
-        except:
-            print('Bad Message File Path')
+                if len(chunk) > CHUNKSIZE:
+                    print(f"The input file size is limited to {CHUNKSIZE}... terminating")
+                    return
+        except Exception as err:
+            print(f'Bad Message File Path: {err}')
             return
         filesize = str(len(chunk)).zfill(SIZE)
         if len(chunk) % SIZE:  # add on bytes if not a multiple of size
@@ -258,7 +261,7 @@ class Utilities():
                 realFileSize = int(infile.read(SIZE).decode('utf-8')) # get file size
                 IV = infile.read(SIZE)
                 decryptor = AES.new(self.getKey(password), AES.MODE_CBC, IV)
-                data = infile.read(CHUNKSIZE)
+                data = infile.read()
         except:
             print("Bad Encrypted message file or bad path")
             return
