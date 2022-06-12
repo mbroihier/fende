@@ -101,7 +101,8 @@ def main():
             senderMatch = sender.search(body)
             sendersPublicKey = ""
             if senderMatch:
-                sendersPublicKey = configure.PUBLIC_KEYS_PATH + senderMatch.group(1).decode('utf-8')
+                sendersPublicKey = configure.PUBLIC_KEYS_DIRECTORY +\
+                    senderMatch.group(1).decode('utf-8')
         emailToGet = aUIDList[numberOfMessagesRead]
         if match:
             fileName = match.group(1)
