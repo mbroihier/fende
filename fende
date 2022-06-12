@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 '''
-fende - file encryptor and decryptor using RSA and AEC
+signature - create a signature for a file using PKCS#1 RSA digital Signature
 '''
 import getopt
 import sys
@@ -8,8 +8,9 @@ from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
+from Crypto.Signature.PKCS1_v1_5 import PKCS115_SigScheme
 from Crypto import Random
-
+import configure
 
 CHUNKSIZE = 64*1024000  # maximum file size processed
 KEY_SIZE = 1024
@@ -32,9 +33,11 @@ class Utilities():
         self.helpParameters = ["-h", "--help"]
         self.parameterNames = ["-h", "--help", "--publicKeyPath", "--privateKeyPath", "--password",
                                "--passwordFilePath", "--fileToEncryptPath", "--fileToDecryptPath",
-                               "--encryptedFilePath", "--decryptedFilePath", "--generateKeys"]
+                               "--encryptedFilePath", "--decryptedFilePath", "--generateKeys",
+                               "--sign", "--verify"]
         self.validatedParameters = {}
         self.command = None
+        self.signature = None
 
     @staticmethod
     def getKey(password):
@@ -73,6 +76,16 @@ class Utilities():
                 print(f"This option is not a valid option:{request}")
                 usage()
                 sys.exit(1)
+        if "--password" not in self.validatedParameters:
+            self.validatedParameters["--password"] = ""
+        if "--passwordFilePath" not in self.validatedParameters:
+            self.validatedParameters["--passwordFilePath"] = ""
+        if "--sign" not in self.validatedParameters:
+            self.validatedParameters["--sign"] = ""
+        else:
+            self.validatedParameters["--sign"] = "sign"
+        if "--verify" not in self.validatedParameters:
+            self.validatedParameters["--verify"] = ""
         notMissing = True
         for parameter in self.helpParameters:
             if not parameter in self.uniqueRequests:
@@ -91,14 +104,14 @@ class Utilities():
                 for parameter in self.encryptParameters:
                     if not parameter in self.uniqueRequests:
                         notMissing = False
-                if notMissing:
+                if notMissing and self.validatedParameters["--verify"] == "":
                     self.command = "executeEncryptMessage"
                 else:
                     notMissing = True
                     for parameter in self.decryptParameters:
                         if not parameter in self.uniqueRequests:
                             notMissing = False
-                    if notMissing:
+                    if notMissing and self.validatedParameters["--sign"] != "sign":
                         self.command =  "executeDecryptMessage"
                     else:
                         print("Invalid option combinations/ambiguous request")
@@ -111,10 +124,6 @@ class Utilities():
             print("Missing required parameters")
             usage()
             sys.exit(1)
-        if "--password" not in self.validatedParameters:
-            self.validatedParameters["--password"] = ""
-        if "--passwordFilePath" not in self.validatedParameters:
-            self.validatedParameters["--passwordFilePath"] = ""
 
     def executeCommand(self):
         '''
@@ -134,15 +143,17 @@ class Utilities():
                 passwordFilePath = self.validatedParameters["--passwordFilePath"]
                 fileToEncryptPath = self.validatedParameters["--fileToEncryptPath"]
                 encryptedFilePath = self.validatedParameters["--encryptedFilePath"]
+                sign = self.validatedParameters["--sign"]
                 self.encryptFile(publicKeyPath, password, passwordFilePath, fileToEncryptPath,
-                                 encryptedFilePath)
+                                 encryptedFilePath, sign)
             elif self.command == "executeDecryptMessage":
                 privateKeyPath = self.validatedParameters["--privateKeyPath"]
                 passwordFilePath = self.validatedParameters["--passwordFilePath"]
                 fileToDecryptPath = self.validatedParameters["--fileToDecryptPath"]
                 decryptedFilePath = self.validatedParameters["--decryptedFilePath"]
+                verify = self.validatedParameters["--verify"]
                 self.decryptFile(privateKeyPath, passwordFilePath, fileToDecryptPath,
-                                 decryptedFilePath)
+                                 decryptedFilePath, verify)
             else:
                 print(f"Invalid execution command: {self.command}")
                 sys.exit(1)
@@ -164,7 +175,7 @@ class Utilities():
         print("done")
 
     def encryptFile(self, publicKeyPath, password, passwordFilePath, fileToEncryptPath,
-                    encryptedFilePath):
+                    encryptedFilePath, sign):
         '''
         encryptFile - encrypt a file using AEC
         '''
@@ -204,6 +215,10 @@ class Utilities():
             print(f'Bad Message File Path: {err}')
             return
         filesize = str(len(chunk)).zfill(SIZE)
+        if sign == "sign":
+            self.signDocument(chunk)
+            with open(encryptedFilePath, 'ab') as outfile:
+                outfile.write(self.signature)
         if len(chunk) % SIZE:  # add on bytes if not a multiple of size
             chunk += b' ' * (SIZE - (len(chunk) % SIZE))
         IV = Random.new().read(SIZE)
@@ -219,7 +234,8 @@ class Utilities():
             print('Bad Message File Path')
 
 
-    def decryptFile(self, privateKeyPath, passwordFilePath, fileToDecryptPath, decryptedFilePath):
+    def decryptFile(self, privateKeyPath, passwordFilePath, fileToDecryptPath, decryptedFilePath,
+                    verify):
         '''
         decryptFile - decrypt a file using AEC
         '''
@@ -230,9 +246,15 @@ class Utilities():
             if passwordFilePath != '':
                 with open(passwordFilePath, 'rb') as fileObj:
                     encrypted = fileObj.read()
+                if verify != "":
+                    with open(fileToDecryptPath, 'rb') as fileObj:
+                        self.signature = fileObj.read()[:128]
             else:
                 with open(fileToDecryptPath, 'rb') as fileObj:
-                    encrypted = fileObj.read()[:128]
+                    wholeFile = fileObj.read()
+                    encrypted = wholeFile[:128]
+                    if verify != "":
+                        self.signature = wholeFile[128:128+128]
         except:
             print("Password information could not be read")
             return
@@ -258,6 +280,8 @@ class Utilities():
             with open(fileToDecryptPath, 'rb') as infile:
                 if passwordFilePath == '':
                     infile.read(128)  # read past password information
+                if verify != "":
+                    infile.read(128)
                 realFileSize = int(infile.read(SIZE).decode('utf-8')) # get file size
                 IV = infile.read(SIZE)
                 decryptor = AES.new(self.getKey(password), AES.MODE_CBC, IV)
@@ -271,9 +295,36 @@ class Utilities():
         try:
             with open(decryptedFilePath, "wb") as fileObj:
                 fileObj.write(decoded[0:realFileSize])
+            if verify != "":
+                self.verifyDocument(verify, decoded[0:realFileSize])
         except:
             print("Bad Decrypted file path")
 
+    def signDocument(self, document):
+        '''
+        signDocument - develop a digital signature for a document
+        '''
+        with open(configure.PRIVATE_KEY_PATH, 'rb') as fileObj:
+            priKey = RSA.importKey(fileObj.read())
+        documentHash = SHA256.new(document)
+        signer = PKCS115_SigScheme(priKey)
+        self.signature = signer.sign(documentHash)
+
+    def verifyDocument(self, author, document):
+        '''
+        verifyDocument - verify that the document matches the expected signature
+        '''
+        with open(author, 'rb') as fileObj:
+            pubKey = RSA.importKey(fileObj.read())
+        documentHash = SHA256.new(document)
+        verifier = PKCS115_SigScheme(pubKey)
+        if self.signature:
+            if verifier.verify(documentHash, self.signature):
+                print("Signature is valid")
+            else:
+                print("Signature is not valid")
+        else:
+            print("Signature is not valid")
 
 def usage():
     '''
@@ -283,9 +334,10 @@ def usage():
     print("fende --generateKeys --publicKeyPath=<path> --privateKeyPath=<path>")
     print("fende --publicKeyPath=<path> --fileToEncrypt=<path>")
     print("      --password=<password>--encryptedFilePath=<path>)")
-    print("      [--passwordFilePath=<path>])")
+    print("      [--passwordFilePath=<path>][--sign])")
     print("fende --privateKeyPath=<path> --fileToDecrypt=<path>")
-    print("      --decryptedFilePath=<path> [--passwordFilePath=<path>])")
+    print("      --decryptedFilePath=<path> [--passwordFilePath=<path>]")
+    print("      [--verify=<author's public key>])")
 
 def main():
     '''
@@ -300,7 +352,7 @@ def main():
                                                                "encryptedFilePath=",
                                                                "fileToDecryptPath=",
                                                                "decryptedFilePath=",
-                                                               "generateKeys"])
+                                                               "generateKeys", "sign", "verify="])
         if len(dontCare):
             print("Excess command line parameters")
             sys.exit(1)

@@ -26,6 +26,8 @@ def validateParameters(parameters):
             validatedParameters["fileToSend"] = value
         if "--emailAddress" == parameter:
             validatedParameters["emailAddress"] = value
+        if "--sign" == parameter:
+            validatedParameters["sign"] = ""
     if not ("publicKeyPath" in validatedParameters and "fileToSend" in validatedParameters and
             "emailAddress" in validatedParameters):
         print("Missing parameters", validatedParameters)
@@ -39,6 +41,7 @@ def usage():
     '''
     print('fendeMessSend -h | --help   displays this message')
     print('fendeMessSend --publicKeyPath=<path> --fileToSend=<path> --emailAddress=<email address>')
+    print('              [--sign]')
     print('                            sends encrypted file to the specified email address')
 
 def main():
@@ -47,7 +50,7 @@ def main():
     '''
     try:
         options, dontCare = getopt.getopt(sys.argv[1:], "h", ["help", "publicKeyPath=",
-                                                              "fileToSend=",
+                                                              "fileToSend=", "sign",
                                                               "emailAddress="])
         if len(dontCare):
             print("Excess command line parameters")
@@ -64,11 +67,24 @@ def main():
     crl.setopt(crl.MAIL_RCPT, [validatedParameters["emailAddress"]])
     try:
         pWord = secrets.token_hex(16)
-        result = subprocess.check_output([configure.FENDE,
-                                          f'--publicKeyPath={validatedParameters["publicKeyPath"]}',
-                                          f'--fileToEncryptPath={validatedParameters["fileToSend"]}',
-                                          '--encryptedFilePath=_tempFileToSend.bin',
-                                          f'--password={pWord}'])
+        publicKeyPathParameter = f'--publicKeyPath={validatedParameters["publicKeyPath"]}'
+        fileToEncryptPathParameter = f'--fileToEncryptPath={validatedParameters["fileToSend"]}'
+        encryptedFilePathParameter = '--encryptedFilePath=_tempFileToSend.bin'
+        passwordParameter = f'--password={pWord}'
+        signParameter = '--sign'
+        if "sign" in validatedParameters:
+            result = subprocess.check_output([configure.FENDE,
+                                              publicKeyPathParameter,
+                                              fileToEncryptPathParameter,
+                                              encryptedFilePathParameter,
+                                              passwordParameter,
+                                              signParameter])
+        else:
+            result = subprocess.check_output([configure.FENDE,
+                                              publicKeyPathParameter,
+                                              fileToEncryptPathParameter,
+                                              encryptedFilePathParameter,
+                                              passwordParameter])
         print("Message being encrypted....", result.decode('utf-8'))
     except Exception as err:
         print(err)
@@ -77,7 +93,12 @@ def main():
         encryptedMessage = fileObject.read()
     base64EncryptedMessage = base64.b64encode(encryptedMessage)
     (dontCare, tail) = os.path.split(validatedParameters["fileToSend"])
-    ioObject = BytesIO(b'Subject: fende message ' + bytes(tail + '\n', 'utf-8') + base64EncryptedMessage)
+    if "sign" in validatedParameters:
+        ioObject = BytesIO(b'Subject: signed fende message ' + bytes(tail + '\n', 'utf-8') +
+                           base64EncryptedMessage)
+    else:
+        ioObject = BytesIO(b'Subject: fende message ' + bytes(tail + '\n', 'utf-8') +
+                           base64EncryptedMessage)
     crl.setopt(crl.READDATA, ioObject)
     crl.setopt(crl.UPLOAD, 1)
     crl.perform()

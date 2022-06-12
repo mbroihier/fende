@@ -65,10 +65,13 @@ def main():
     emailToGet = aUIDList[0]
     numberOfValidMessages = len(aUIDList) - 1
     crl.close()
+    subject = re.compile(b'Subject: fende message ([^\r]+)\r\n\r\n')
+    signedSubject = re.compile(b'Subject: signed fende message ([^\r]+)\r\n\r\n')
+    sender = re.compile(b'From: ([^@]+)@')
     while numberOfMessagesProcessed < numberOfMessagesToProcess\
           and numberOfMessagesRead < maximumNumberOfMessagesToRead\
           and numberOfMessagesRead < numberOfValidMessages:
-        print(f'Attempting to process message ID {emailToGet}, messages read so far: {numberOfMessagesRead}')
+        print(f'Processing message ID {emailToGet}, messages read so far: {numberOfMessagesRead}')
         bObject = BytesIO()
         crl = pycurl.Curl()
         crl.setopt(crl.URL,f'{configure.IMAP_URL}/INBOX;UID={emailToGet}')
@@ -90,8 +93,15 @@ def main():
         body = bObject.getvalue()
         bObject.close()
         privateKey = configure.PRIVATE_KEY_PATH
-        subject = re.compile(b'Subject: fende message ([^\r]+)\r\n\r\n')
         match = subject.search(body)
+        signed = False
+        if not match:
+            signed = True
+            match = signedSubject.search(body)
+            senderMatch = sender.search(body)
+            sendersPublicKey = ""
+            if senderMatch:
+                sendersPublicKey = configure.PUBLIC_KEYS_PATH + senderMatch.group(1).decode('utf-8')
         emailToGet = aUIDList[numberOfMessagesRead]
         if match:
             fileName = match.group(1)
@@ -102,12 +112,20 @@ def main():
             privateKeyParameter = f'--privateKeyPath={privateKey}'
             command = '/home/pi/fende/fende'
             try:
-                result = subprocess.check_output([command, privateKeyParameter,
-                                                  '--fileToDecryptPath=_tempEncryptedFile.bin',
-                                                  '--decryptedFilePath=' +
-                                                  configure.FILES_READ_DIRECTORY
-                                                  + fileName.decode('utf-8')])
-                print("Decryption attempted...", result.decode('utf-8'))
+                if signed:
+                    result = subprocess.check_output([command, privateKeyParameter,
+                                                      '--fileToDecryptPath=_tempEncryptedFile.bin',
+                                                      '--decryptedFilePath=' +
+                                                      configure.FILES_READ_DIRECTORY
+                                                      + fileName.decode('utf-8'),
+                                                      f'--verify={sendersPublicKey}'])
+                else:
+                    result = subprocess.check_output([command, privateKeyParameter,
+                                                      '--fileToDecryptPath=_tempEncryptedFile.bin',
+                                                      '--decryptedFilePath=' +
+                                                      configure.FILES_READ_DIRECTORY
+                                                      + fileName.decode('utf-8')])
+                print("Decryption attempted...", fileName.decode('utf-8'), result.decode('utf-8'))
             except Exception as err:
                 print(err)
                 sys.exit(-1)
