@@ -71,7 +71,7 @@ def main():
     while numberOfMessagesProcessed < numberOfMessagesToProcess\
           and numberOfMessagesRead < maximumNumberOfMessagesToRead\
           and numberOfMessagesRead < numberOfValidMessages:
-        print(f'Processing message ID {emailToGet}, messages read so far: {numberOfMessagesRead}')
+        print(f'Processing message ID {emailToGet}')
         bObject = BytesIO()
         crl = pycurl.Curl()
         crl.setopt(crl.URL,f'{configure.IMAP_URL}/INBOX;UID={emailToGet}')
@@ -90,6 +90,7 @@ def main():
                 print("Unexpected exception", err)
             continue
         numberOfMessagesRead += 1
+        print(f'Messages read from server: {numberOfMessagesRead}')
         body = bObject.getvalue()
         bObject.close()
         privateKey = configure.PRIVATE_KEY_PATH
