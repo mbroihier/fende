@@ -1,6 +1,6 @@
 # fende - file encryptor and decryptor
 
-This repository contains a small python3 script that encrypts and decrypts files.  It is based on the work of Woody Pope (woody.pope@mailfence.com)  Woody's original work includes a GUI that I removed so that I could incorporate it into a mail client that could send and receive encrypted messages.  I have added two scripts. One encrypts and sends files as email, and one that receives and decrypts files.
+This repository contains a small python3 script that encrypts and decrypts files.  It is based on the work of Woody Pope (woody.pope@mailfence.com).  Woody's original work includes a GUI that I removed so that I could incorporate it into a mail client that could send and receive encrypted messages.  I have added two scripts. One encrypts and sends files as email, and one that receives and decrypts files.  Email can be signed with the --sign option.  This places a digital signature in the email that can be verified by the receiver client.
 
 RSA is used to encrypt/decrypt a password/phrase that is then used for the AES algorithm to encrypt/decrypt a file.  The password/phrase can be stored with the encrypted message or put into its own file so that delivery of the message and the password/phrase can be handled independently.
 
