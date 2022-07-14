@@ -13,7 +13,8 @@ from Crypto import Random
 import configure
 
 CHUNKSIZE = 64*1024000  # maximum file size processed
-KEY_SIZE = 1024
+KEY_SIZE = 4096
+PASSWORD_FILE_SIZE = 512
 SIZE = 16
 
 class Utilities():
@@ -248,13 +249,13 @@ class Utilities():
                     encrypted = fileObj.read()
                 if verify != "":
                     with open(fileToDecryptPath, 'rb') as fileObj:
-                        self.signature = fileObj.read()[:128]
+                        self.signature = fileObj.read()[:PASSWORD_FILE_SIZE]
             else:
                 with open(fileToDecryptPath, 'rb') as fileObj:
                     wholeFile = fileObj.read()
-                    encrypted = wholeFile[:128]
+                    encrypted = wholeFile[:PASSWORD_FILE_SIZE]
                     if verify != "":
-                        self.signature = wholeFile[128:128+128]
+                        self.signature = wholeFile[PASSWORD_FILE_SIZE:PASSWORD_FILE_SIZE+PASSWORD_FILE_SIZE]
         except:
             print("Password information could not be read")
             return
@@ -279,9 +280,9 @@ class Utilities():
         try:
             with open(fileToDecryptPath, 'rb') as infile:
                 if passwordFilePath == '':
-                    infile.read(128)  # read past password information
+                    infile.read(PASSWORD_FILE_SIZE)  # read past password information
                 if verify != "":
-                    infile.read(128)
+                    infile.read(PASSWORD_FILE_SIZE)
                 realFileSize = int(infile.read(SIZE).decode('utf-8')) # get file size
                 IV = infile.read(SIZE)
                 decryptor = AES.new(self.getKey(password), AES.MODE_CBC, IV)
